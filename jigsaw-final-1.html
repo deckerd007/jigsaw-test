@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>직소 퍼즐 3:4</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+KR:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0e0e12; --surface:#18181f; --surface2:#22222c;
+    --accent:#f0c040; --text:#f0ede8; --muted:#6b6880;
+    --border:#2e2e3a; --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;
+       min-height:100dvh;display:flex;flex-direction:column;overflow:hidden;overscroll-behavior:none;}
+
+  .screen{display:none;flex-direction:column;flex:1;min-height:0;}
+  .screen.active{display:flex;}
+
+  /* ── 설정 화면 ── */
+  .setup-wrap{padding:40px 24px;text-align:center;max-width:480px;margin:0 auto;width:100%;}
+  .setup-wrap h1{font-family:'Bebas Neue';color:var(--accent);font-size:52px;letter-spacing:3px;margin-bottom:36px;}
+
+  .section-label{font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;}
+
+  .diff-grid{display:flex;gap:8px;justify-content:center;margin-bottom:32px;}
+  .diff-btn{
+    flex:1;background:var(--surface2);border:2px solid var(--border);color:var(--muted);
+    border-radius:12px;padding:14px 6px;cursor:pointer;font-size:14px;font-weight:600;
+    font-family:'Noto Sans KR',sans-serif;line-height:1.5;transition:all .15s;
+  }
+  .diff-btn span{font-size:10px;font-weight:400;display:block;margin-top:2px;}
+  .diff-btn:hover{border-color:var(--accent);color:var(--text);}
+  .diff-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(240,192,64,.1);}
+
+  .btn-row{display:flex;flex-direction:column;gap:12px;margin-top:8px;}
+  .btn{background:var(--accent);border:none;border-radius:var(--radius);color:#111;
+       font-family:'Bebas Neue';font-size:28px;padding:18px;width:100%;cursor:pointer;transition:opacity .2s;}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .btn.secondary{background:var(--surface2);color:var(--muted);font-size:18px;
+                  border:1px solid var(--border);}
+
+  /* ── 게임 화면 ── */
+  .game-header{
+    display:flex;align-items:center;padding:12px 16px;
+    background:var(--surface);border-bottom:1px solid var(--border);gap:12px;flex-shrink:0;
+  }
+  .game-header .back{background:none;border:none;color:var(--text);font-size:24px;cursor:pointer;padding:4px;}
+  .game-stats{display:flex;gap:16px;font-size:13px;color:var(--muted);flex:1;}
+  .game-stats b{color:var(--text);font-weight:600;}
+  .game-stats .badge{
+    font-size:11px;background:var(--surface2);border:1px solid var(--border);
+    border-radius:6px;padding:2px 8px;color:var(--muted);
+  }
+  .btn-shuffle{background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;padding:4px;}
+
+  #puzzle-area{
+    flex:1;position:relative;overflow:hidden;touch-action:none;
+    display:flex;align-items:center;justify-content:center;min-height:0;
+  }
+  #grid-root{position:relative;flex-shrink:0;}
+
+  .pgroup{position:absolute;overflow:hidden;z-index:10;pointer-events:none;touch-action:none;}
+  .pgroup.dragging{z-index:500;opacity:0.9;filter:drop-shadow(0 8px 24px rgba(0,0,0,.8));}
+
+  .piece{position:absolute;pointer-events:auto;touch-action:none;cursor:grab;}
+  .piece img{display:block;width:100%;height:100%;}
+
+  /* ── 완성 오버레이 ── */
+  #win-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
+    align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:20px;
+  }
+  #win-overlay.show{display:flex;}
+  #win-overlay h2{font-family:'Bebas Neue';font-size:56px;color:var(--accent);letter-spacing:2px;}
+  #win-overlay p{font-size:16px;color:var(--text);opacity:.8;}
+  #win-overlay button{
+    background:var(--accent);border:none;border-radius:var(--radius);color:#111;
+    font-family:'Bebas Neue';font-size:24px;padding:14px 40px;cursor:pointer;
+  }
+
+  #loading{
+    position:fixed;inset:0;background:rgba(0,0,0,.8);
+    display:none;align-items:center;justify-content:center;z-index:2000;
+    color:var(--accent);font-weight:600;font-size:16px;gap:12px;flex-direction:column;
+  }
+  .spinner{
+    width:32px;height:32px;border:3px solid rgba(240,192,64,.2);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<!-- ── 설정 화면 ── -->
+<div class="screen active" id="screen-setup">
+  <div class="setup-wrap">
+    <h1>JIGSAW</h1>
+
+    <div class="section-label">난이도 선택</div>
+    <div class="diff-grid">
+      <button class="diff-btn active" data-n="4" onclick="setN(this)">4×4<span>16조각</span></button>
+      <button class="diff-btn" data-n="5" onclick="setN(this)">5×5<span>25조각</span></button>
+      <button class="diff-btn" data-n="6" onclick="setN(this)">6×6<span>36조각</span></button>
+      <button class="diff-btn" data-n="7" onclick="setN(this)">7×7<span>49조각</span></button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" onclick="fetchRandom()">🎲 랜덤 이미지</button>
+      <button class="btn" id="btn-start" onclick="startGame()" disabled>퍼즐 시작 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 게임 화면 ── -->
+<div class="screen" id="screen-game">
+  <div class="game-header">
+    <button class="back" onclick="goSetup()">←</button>
+    <div class="game-stats">
+      <div>이동 <b id="stat-moves">0</b></div>
+      <div>시간 <b id="stat-timer">0:00</b></div>
+      <span class="badge" id="stat-badge">4×4</span>
+    </div>
+    <button class="btn-shuffle" onclick="initBoard()" title="재배치">🔀</button>
+  </div>
+  <div id="puzzle-area"><div id="grid-root"></div></div>
+</div>
+
+<!-- ── 완성 오버레이 ── -->
+<div id="win-overlay">
+  <h2>🎉 완성!</h2>
+  <p id="win-stats"></p>
+  <button onclick="goSetup()">처음으로</button>
+</div>
+
+<div id="loading"><div class="spinner"></div>처리 중...</div>
+
+<script>
+/* ══════════════════════════════════════════
+   상태
+   GAP = 0  (고정 — 조각 사이 틈 없음)
+   STEP = TILE  (GAP=0이므로 동일)
+   grid[r][c] = pid
+   groups: Map<gid, {gid, members:[{pid,r,c}]}>
+   pieceGroup[pid] = gid
+══════════════════════════════════════════ */
+const GAP = 0;
+
+let N = 4;
+let STEP_W, STEP_H, TILE_W, TILE_H;
+let grid = [], groups = new Map(), pieceGroup = {};
+let nextGid = 0, tiles = [], imgSrc = null;
+let moves = 0, seconds = 0, timerInterval = null;
+
+/* ── 설정 ── */
+function setN(btn) {
+  document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  N = parseInt(btn.dataset.n);
+}
+
+function showLoading(on) {
+  document.getElementById('loading').style.display = on ? 'flex' : 'none';
+}
+
+/* ── 이미지 ── */
+function fetchRandom() {
+  showLoading(true);
+  // picsum.photos 직접 호출 (CORS 지원, iOS Safari 호환)
+  const id = Math.floor(Math.random() * 1000);
+  const url = `https://picsum.photos/seed/${id}/600/800`;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    // Canvas에 그려서 data URL로 저장 (이후 재로드 없이 슬라이싱)
+    const cv = document.createElement('canvas');
+    cv.width = 600; cv.height = 800;
+    cv.getContext('2d').drawImage(img, 0, 0, 600, 800);
+    imgSrc = cv.toDataURL('image/jpeg', 0.95);
+    document.getElementById('btn-start').disabled = false;
+    showLoading(false);
+  };
+  img.onerror = () => {
+    showLoading(false);
+    alert('이미지를 불러오지 못했습니다. 다시 시도해 주세요.');
+  };
+  img.src = url;
+}
+
+/* ── 게임 시작 ── */
+function startGame() {
+  showLoading(true);
+  const availW = Math.min(window.innerWidth - 32, 520);
+  STEP_W = Math.floor(availW / N);
+  STEP_H = Math.floor((availW * 4 / 3) / N);
+  TILE_W = STEP_W; // GAP=0
+  TILE_H = STEP_H;
+
+  // imgSrc는 이미 canvas data URL — Image로 로드 후 슬라이싱
+  const img = new Image();
+  img.onload = () => {
+    tiles = [];
+    const srcW = img.width / N, srcH = img.height / N;
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const tc = document.createElement('canvas');
+        tc.width = TILE_W; tc.height = TILE_H;
+        tc.getContext('2d').drawImage(img, c * srcW, r * srcH, srcW, srcH, 0, 0, TILE_W, TILE_H);
+        tiles.push(tc.toDataURL('image/jpeg', 0.92));
+      }
+    }
+    showLoading(false);
+    document.getElementById('screen-setup').classList.remove('active');
+    document.getElementById('screen-game').classList.add('active');
+    document.getElementById('win-overlay').classList.remove('show');
+    document.getElementById('stat-badge').textContent = `${N}×${N}`;
+    initBoard();
+  };
+  img.onerror = () => { showLoading(false); alert('오류가 발생했습니다.'); };
+  img.src = imgSrc;
+}
+
+function goSetup() {
+  clearInterval(timerInterval);
+  document.getElementById('screen-game').classList.remove('active');
+  document.getElementById('screen-setup').classList.add('active');
+  document.getElementById('win-overlay').classList.remove('show');
+}
+
+/* ── 보드 초기화 ── */
+function initBoard() {
+  moves = 0; groups.clear(); pieceGroup = {}; nextGid = 0;
+  document.getElementById('stat-moves').textContent = 0;
+  startTimer();
+
+  const root = document.getElementById('grid-root');
+  root.style.width  = (N * STEP_W) + 'px';
+  root.style.height = (N * STEP_H) + 'px';
+
+  const pids = Array.from({length: N * N}, (_, i) => i).sort(() => Math.random() - 0.5);
+  grid = Array.from({length: N}, () => Array(N).fill(-1));
+
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const pid = pids[r * N + c];
+      grid[r][c] = pid;
+      const gid = nextGid++;
+      groups.set(gid, { gid, members: [{ pid, r, c }] });
+      pieceGroup[pid] = gid;
+    }
+  }
+  renderAll();
+}
+
+/* ══════════════════════════════════════════
+   렌더링
+   GAP = 0 이므로 STEP = TILE
+   컨테이너 위치: minC * STEP_W, minR * STEP_H
+   컨테이너 크기: (maxC-minC)*STEP_W + TILE_W, (maxR-minR)*STEP_H + TILE_H
+   피스 상대위치: (m.c-minC)*STEP_W, (m.r-minR)*STEP_H
+   → GAP=0이므로 피스들이 빈틈 없이 붙음
+══════════════════════════════════════════ */
+function renderAll() {
+  const root = document.getElementById('grid-root');
+  root.innerHTML = '';
+
+  groups.forEach(g => {
+    const minR = Math.min(...g.members.map(m => m.r));
+    const minC = Math.min(...g.members.map(m => m.c));
+    const maxR = Math.max(...g.members.map(m => m.r));
+    const maxC = Math.max(...g.members.map(m => m.c));
+
+    const el = document.createElement('div');
+    el.className = 'pgroup';
+    el.id = `group-${g.gid}`;
+    el.style.left   = (minC * STEP_W) + 'px';
+    el.style.top    = (minR * STEP_H) + 'px';
+    el.style.width  = ((maxC - minC) * STEP_W + TILE_W) + 'px';
+    el.style.height = ((maxR - minR) * STEP_H + TILE_H) + 'px';
+
+    g.members.forEach(m => {
+      const piece = document.createElement('div');
+      piece.className = 'piece';
+      piece.style.width  = TILE_W + 'px';
+      piece.style.height = TILE_H + 'px';
+      piece.style.left   = ((m.c - minC) * STEP_W) + 'px';
+      piece.style.top    = ((m.r - minR) * STEP_H) + 'px';
+
+      const img = document.createElement('img');
+      img.src = tiles[m.pid];
+      piece.appendChild(img);
+      piece.addEventListener('pointerdown', onDown);
+      el.appendChild(piece);
+    });
+
+    root.appendChild(el);
+  });
+}
+
+/* ── 드래그 ── */
+let drag = { gid: -1, startX: 0, startY: 0, origL: 0, origT: 0, groupEl: null };
+
+function onDown(e) {
+  e.preventDefault();
+  const pieceEl = e.currentTarget;
+  const groupEl = pieceEl.closest('.pgroup');
+  if (!groupEl) return;
+  const gid = parseInt(groupEl.id.split('-')[1]);
+  const g = groups.get(gid);
+  if (!g) return;
+
+  drag = { gid, startX: e.clientX, startY: e.clientY,
+           origL: parseFloat(groupEl.style.left), origT: parseFloat(groupEl.style.top),
+           groupEl };
+
+  groupEl.classList.add('dragging');
+  groupEl.parentNode.appendChild(groupEl);
+
+  // capture를 piece에 걸어야 PC/모바일 모두 pointermove 발화
+  // move/up 이벤트는 document에서 받아 groupEl을 직접 이동
+  pieceEl.setPointerCapture(e.pointerId);
+  pieceEl.addEventListener('pointermove', onMove);
+  pieceEl.addEventListener('pointerup', onUp);
+  pieceEl.addEventListener('pointercancel', onUp);
+}
+
+function onMove(e) {
+  const { groupEl, origL, origT, startX, startY } = drag;
+  if (!groupEl) return;
+  groupEl.style.left = (origL + e.clientX - startX) + 'px';
+  groupEl.style.top  = (origT + e.clientY - startY) + 'px';
+}
+
+function onUp(e) {
+  const pieceEl = e.currentTarget;
+  pieceEl.removeEventListener('pointermove', onMove);
+  pieceEl.removeEventListener('pointerup', onUp);
+  pieceEl.removeEventListener('pointercancel', onUp);
+
+  const { groupEl } = drag;
+  if (!groupEl) return;
+  groupEl.classList.remove('dragging');
+
+  const g = groups.get(drag.gid);
+  const minR = Math.min(...g.members.map(m => m.r));
+  const minC = Math.min(...g.members.map(m => m.c));
+  const maxR = Math.max(...g.members.map(m => m.r));
+  const maxC = Math.max(...g.members.map(m => m.c));
+  const spanR = maxR - minR, spanC = maxC - minC;
+
+  // GAP=0: 컨테이너 left = minC * STEP_W
+  let nC = Math.round(parseFloat(groupEl.style.left) / STEP_W);
+  let nR = Math.round(parseFloat(groupEl.style.top)  / STEP_H);
+  nC = Math.max(0, Math.min(N - 1 - spanC, nC));
+  nR = Math.max(0, Math.min(N - 1 - spanR, nR));
+
+  if (nC !== minC || nR !== minR) {
+    swapAndMove(drag.gid, nR - minR, nC - minC);
+    moves++;
+    document.getElementById('stat-moves').textContent = moves;
+    runMergePass();
+    renderAll();
+    checkWin();
+  } else {
+    groupEl.style.left = (minC * STEP_W) + 'px';
+    groupEl.style.top  = (minR * STEP_H) + 'px';
+  }
+}
+
+/* ══════════════════════════════════════════
+   이동 로직
+   1. 이동 그룹 구 위치 grid 비움
+   2. 새 위치의 타 pid 수집 & grid 비움
+   3. 이동 그룹 새 위치 확정
+   4. 밀려난 pid를 빈 칸에 배치 (즉시 grid 기록)
+══════════════════════════════════════════ */
+function swapAndMove(gid, dR, dC) {
+  const g = groups.get(gid);
+
+  // 1. 구 위치 grid 비움
+  const oldCells = g.members.map(m => ({ r: m.r, c: m.c }));
+  oldCells.forEach(({ r, c }) => { grid[r][c] = -1; });
+
+  // 2. 새 위치 타 pid 수집
+  const myPids = new Set(g.members.map(m => m.pid));
+  const displaced = [];
+  g.members.forEach(m => {
+    const nr = m.r + dR, nc = m.c + dC;
+    if (nr < 0 || nr >= N || nc < 0 || nc >= N) return;
+    const pid = grid[nr][nc];
+    if (pid === -1 || myPids.has(pid)) return;
+    displaced.push(pid);
+    grid[nr][nc] = -1;
+  });
+
+  // 3. 이동 그룹 새 위치 확정
+  g.members.forEach(m => {
+    m.r += dR; m.c += dC;
+    grid[m.r][m.c] = m.pid;
+  });
+
+  // 4. 밀려난 pid 배치
+  const freeSlots = oldCells.filter(({ r, c }) => grid[r][c] === -1);
+
+  displaced.forEach(pid => {
+    // 그룹에서 분리
+    const cgid = pieceGroup[pid];
+    const cg = groups.get(cgid);
+    if (cg) {
+      cg.members = cg.members.filter(m => m.pid !== pid);
+      if (cg.members.length === 0) groups.delete(cgid);
+    }
+
+    // 빈 슬롯 찾기 (구 위치 우선, 그 다음 전체 탐색)
+    let slot = freeSlots.shift() || null;
+    if (!slot) {
+      for (let r = 0; r < N && !slot; r++)
+        for (let c = 0; c < N && !slot; c++)
+          if (grid[r][c] === -1) slot = { r, c };
+    }
+    if (!slot) return;
+
+    grid[slot.r][slot.c] = pid;
+    const ngid = nextGid++;
+    groups.set(ngid, { gid: ngid, members: [{ pid, r: slot.r, c: slot.c }] });
+    pieceGroup[pid] = ngid;
+  });
+}
+
+/* ── 병합 ── */
+function runMergePass() {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let [gid] of groups) {
+      if (tryMerge(gid)) { changed = true; break; }
+    }
+  }
+}
+
+function tryMerge(gid) {
+  const g = groups.get(gid);
+  if (!g) return false;
+  for (const m of g.members) {
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nr = m.r + dr, nc = m.c + dc;
+      if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+      const nPid = grid[nr][nc];
+      if (nPid === -1 || pieceGroup[nPid] === gid) continue;
+      if (Math.floor(nPid / N) - Math.floor(m.pid / N) === dr &&
+          (nPid % N) - (m.pid % N) === dc) {
+        merge(gid, pieceGroup[nPid]);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function merge(gidA, gidB) {
+  const gA = groups.get(gidA), gB = groups.get(gidB);
+  if (!gA || !gB) return;
+  gB.members.forEach(m => { gA.members.push(m); pieceGroup[m.pid] = gidA; });
+  groups.delete(gidB);
+}
+
+/* ── 승리 ── */
+function checkWin() {
+  if (groups.size !== 1) return;
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (grid[r][c] !== r * N + c) return;
+
+  clearInterval(timerInterval);
+  const t = document.getElementById('stat-timer').textContent;
+  document.getElementById('win-stats').textContent = `이동 ${moves}회 · 시간 ${t}`;
+  setTimeout(() => document.getElementById('win-overlay').classList.add('show'), 200);
+}
+
+/* ── 타이머 ── */
+function startTimer() {
+  clearInterval(timerInterval);
+  seconds = 0;
+  document.getElementById('stat-timer').textContent = '0:00';
+  timerInterval = setInterval(() => {
+    seconds++;
+    const m = Math.floor(seconds / 60), s = seconds % 60;
+    document.getElementById('stat-timer').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  }, 1000);
+}
+</script>
+</body>
+</html>
